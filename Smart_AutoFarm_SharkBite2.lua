@@ -1,49 +1,68 @@
 -- =========================================================================
--- Smart Auto Farm 100% Working Auto Shoot (Multi-Remote & Auto-Equip)
--- Optimized specifically for SharkBite 2 & Xeno Executor
+-- Smart Auto Farm Panel for SharkBite 2 (Xeno Optimized)
+-- Features: Clean UI Toggle Panel, Accurate Shark Status Detection, Auto Shoot & Auto Reset
 -- =========================================================================
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
 local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
 
 local Window = Library:CreateWindow({
-	Title = "SharkBite 2 Ultra Auto Farm",
-	Footer = "100% Fire Remote Shoot & Smart Roles [Xeno]",
+	Title = "SharkBite 2 Auto Farm Control",
+	Footer = "Smart Detection & Auto Shoot [Xeno]",
 	Icon = 95816097006870,
 	NotifySide = "Right",
 	ShowCustomCursor = true,
 })
 
-local TabMain = Window:AddTab("Smart Auto Farm", "zap")
-local MainBox = TabMain:AddLeftGroupbox("Main Logic Control", "zap")
+local TabMain = Window:AddTab("Control Panel", "zap")
+local MainBox = TabMain:AddLeftGroupbox("Auto Farm Switch", "power")
+local StatusBox = TabMain:AddRightGroupbox("Shark Status & Info", "info")
 
-local function GetSharkModel()
+-- Отображение точного статуса Акулы в Панели
+local SharkStatusLabel = StatusBox:AddLabel({
+	Text = "Shark Status: Checking...",
+	DoesWrap = true,
+})
+
+local RoleLabel = StatusBox:AddLabel({
+	Text = "Your Role: Human",
+	DoesWrap = true,
+})
+
+-- Функция точного поиска Акулы на карте
+local function FindActiveShark()
+    -- 1. Поиск среди игроков
     for _, p in ipairs(game.Players:GetPlayers()) do
         if p ~= game.Players.LocalPlayer and p.Character then
-            if p.Character:FindFirstChild("Shark") or p.Character.Name:lower():find("shark") then
-                return p.Character
+            local char = p.Character
+            if char:FindFirstChild("Shark") or char.Name:lower():find("shark") or (p.Team and p.Team.Name:lower():find("shark")) then
+                return char, p.Name
             end
         end
     end
+    -- 2. Поиск среди объектов Workspace
     if workspace:FindFirstChild("Shark") then
-        return workspace.Shark
+        return workspace.Shark, "Workspace Shark"
     end
     for _, obj in ipairs(workspace:GetChildren()) do
-        if obj.Name:lower():find("shark") then
-            return obj
+        if obj.Name:lower():find("shark") and obj:IsA("Model") then
+            return obj, obj.Name
         end
     end
-    return nil
+    return nil, nil
 end
 
-MainBox:AddToggle("SmartFarmToggle", {
-	Text = "Enable Ultra Auto Farm",
+-- Переключатель в Панели (ВКЛ / ВЫКЛ)
+MainBox:AddToggle("AutoFarmMasterToggle", {
+	Text = "AUTO FARM (ON / OFF)",
 	Default = false,
-	Tooltip = "Human: Safe Teleport & 100% Auto Shoot. Shark: Auto Reset.",
+	Tooltip = "Turn ON to Auto Shoot + Auto Reset Shark. Turn OFF to Stop.",
 	Callback = function(Value)
 		getgenv().SmartFarmActive = Value
 		
 		if Value then
+			Library:Notify({ Title = "Auto Farm", Content = "Auto Farm ENABLED!", Duration = 3 })
+			
 			task.spawn(function()
 				while getgenv().SmartFarmActive do
 					task.wait(0.03)
@@ -54,24 +73,35 @@ MainBox:AddToggle("SmartFarmToggle", {
 						local hum = char:FindFirstChildOfClass("Humanoid")
 						local hrp = char:FindFirstChild("HumanoidRootPart")
 						
-						-- Роль: Акула или Человек
+						-- Проверка точного статуса Акулы
+						local sharkModel, sharkName = FindActiveShark()
+						if sharkModel then
+							SharkStatusLabel:SetText("Shark Status: ALIVE (" .. tostring(sharkName) .. ")")
+						else
+							SharkStatusLabel:SetText("Shark Status: NOT FOUND / WAITING ROUND")
+						end
+						
+						-- Проверка роли игрока
 						local isShark = false
 						if char:FindFirstChild("Shark") or char.Name:lower():find("shark") or (player.Team and player.Team.Name:lower():find("shark")) then
 							isShark = true
 						end
 						
 						if isShark then
-							-- 1. СМЕРТЬ АКУЛЫ
+							RoleLabel:SetText("Your Role: SHARK (Auto Resetting...)")
+							-- Акула убивает себя для мгновенной победы/раунда
 							if hum and hum.Health > 0 then
 								hum.Health = 0
 							end
 						else
-							-- 2. БЕЗОПАСНЫЙ ТЕЛЕПОРТ ЧЕЛОВЕКА
+							RoleLabel:SetText("Your Role: HUMAN (Farming...)")
+							
+							-- Безопасный Телепорт над картой
 							if hrp then
 								hrp.CFrame = CFrame.new(0, 350, 0)
 							end
 							
-							-- Взять оружие из Backpack
+							-- Экипировка оружия из рюкзака
 							local tool = char:FindFirstChildOfClass("Tool")
 							if not tool and player:FindFirstChild("Backpack") then
 								for _, item in ipairs(player.Backpack:GetChildren()) do
@@ -83,16 +113,14 @@ MainBox:AddToggle("SmartFarmToggle", {
 								end
 							end
 							
-							-- Найти Акулу
-							local shark = GetSharkModel()
-							if tool and shark then
-								local targetPart = shark:FindFirstChild("HumanoidRootPart") 
-									or shark:FindFirstChildOfClass("MeshPart") 
-									or shark:FindFirstChild("Body")
-									or shark.PrimaryPart
+							-- Стрельба ТОЛЬКО если Акула ТОЧНО есть на карте
+							if tool and sharkModel then
+								local targetPart = sharkModel:FindFirstChild("HumanoidRootPart") 
+									or sharkModel:FindFirstChildOfClass("MeshPart") 
+									or sharkModel:FindFirstChild("Body")
+									or sharkModel.PrimaryPart
 									
 								if targetPart then
-									-- Принудительный вызов стрельбы по всем возможным RemoteEvent
 									local pos = targetPart.Position
 									tool:Activate()
 									
@@ -100,16 +128,7 @@ MainBox:AddToggle("SmartFarmToggle", {
 										if child:IsA("RemoteEvent") then
 											pcall(function() child:FireServer(pos) end)
 											pcall(function() child:FireServer(pos, targetPart) end)
-											pcall(function() child:FireServer(targetPart) end)
-										elseif child:IsA("RemoteFunction") then
-											pcall(function() child:InvokeServer(pos) end)
 										end
-									end
-									
-									-- Резервный вызов через ReplicatedStorage
-									local repStorage = game:GetService("ReplicatedStorage")
-									if repStorage:FindFirstChild("Shoot") then
-										pcall(function() repStorage.Shoot:FireServer(pos) end)
 									end
 								end
 							end
@@ -117,12 +136,16 @@ MainBox:AddToggle("SmartFarmToggle", {
 					end)
 				end
 			end)
+		else
+			SharkStatusLabel:SetText("Shark Status: OFF")
+			RoleLabel:SetText("Your Role: IDLE")
+			Library:Notify({ Title = "Auto Farm", Content = "Auto Farm DISABLED!", Duration = 3 })
 		end
 	end
 })
 
 Library:Notify({
-	Title = "Ultra Auto Farm Loaded!",
-	Content = "Auto Shoot upgraded for 100% execution in Xeno!",
-	Duration = 5,
+	Title = "Control Panel Ready",
+	Content = "Use the Panel to Toggle Auto Farm ON / OFF!",
+	Duration = 4,
 })
