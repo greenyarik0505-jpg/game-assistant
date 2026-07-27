@@ -14,36 +14,94 @@ local Window = Rayfield:CreateWindow({
       Invite = "nolink",
       RememberJoins = true
    },
-   KeySystem = false -- Система ключей отключена!
+   KeySystem = false
 })
 
 local Tab = Window:CreateTab("Main", 4483362458)
-
 local Section = Tab:CreateSection("Auto Farm")
 
-local AutoFarmEquipWeapon = Tab:CreateToggle({
+-- Безопасные функции фарма с полной проверкой nil / pcall
+local function SafeAutoFarmEquipWeapon()
+    task.spawn(function()
+        while getgenv().AutoFarmEquipWeapon do
+            task.wait(0.1)
+            pcall(function()
+                local player = game.Players.LocalPlayer
+                if not player then return end
+                local character = player.Character
+                if not character then return end
+                
+                local currentWeapon = character:FindFirstChildOfClass("Tool")
+                if not currentWeapon and player:FindFirstChild("Backpack") then
+                    for _, item in ipairs(player.Backpack:GetChildren()) do
+                        if item:IsA("Tool") then
+                            local itemName = item.Name:lower()
+                            if itemName:find("gun") or itemName:find("rifle") or itemName:find("rocket") or itemName:find("launcher") or itemName:find("shotgun") or itemName:find("ray") or itemName:find("blaster") or itemName:find("sniper") or itemName:find("bow") or itemName:find("harpoon") then
+                                item.Parent = character
+                                currentWeapon = item
+                                break
+                            end
+                        end
+                    end
+                end
+
+                local shark = nil
+                for _, p in ipairs(game.Players:GetPlayers()) do
+                    if p ~= player and p.Character and p.Character:FindFirstChild("Shark") then
+                        shark = p.Character
+                        break
+                    end
+                end
+                
+                if not shark and game.Workspace then
+                    for _, obj in ipairs(game.Workspace:GetChildren()) do
+                        if obj.Name:lower():find("shark") then
+                            shark = obj
+                            break
+                        end
+                    end
+                end
+
+                if currentWeapon and shark then
+                    local sharkHRP = shark:FindFirstChild("HumanoidRootPart") or shark:FindFirstChildOfClass("MeshPart") or shark:FindFirstChild("Body") or shark.PrimaryPart
+                    if sharkHRP then
+                        local remote = currentWeapon:FindFirstChild("Shoot") or currentWeapon:FindFirstChild("Fire") or currentWeapon:FindFirstChild("RemoteEvent")
+                        if remote and remote:IsA("RemoteEvent") then
+                            remote:FireServer(sharkHRP.Position)
+                        else
+                            currentWeapon:Activate()
+                        end
+                    end
+                end
+            end)
+        end
+    end)
+end
+
+local AutoFarmEquipWeaponToggle = Tab:CreateToggle({
    Name = "Auto Farm Equip Weapon",
    CurrentValue = false,
    Flag = "AutoFarmEquipWeapon",
    Callback = function(Value)
        getgenv().AutoFarmEquipWeapon = Value
        if Value then
-           AutoFarmEquipWeapon()
+           SafeAutoFarmEquipWeapon()
        end
    end,
 })
 
-function AutoFarmEquipWeapon()
-    spawn(function()
-        while getgenv().AutoFarmEquipWeapon do
-            wait(0.1)
+local function SafeAutoFarmEquipWeaponBoat()
+    task.spawn(function()
+        while getgenv().AutoFarmEquipWeaponBoat do
+            task.wait(0.1)
             pcall(function()
                 local player = game.Players.LocalPlayer
+                if not player then return end
                 local character = player.Character
                 if not character then return end
                 
                 local currentWeapon = character:FindFirstChildOfClass("Tool")
-                if not currentWeapon or not (currentWeapon.Name:lower():find("gun") or currentWeapon.Name:lower():find("rifle") or currentWeapon.Name:lower():find("rocket") or currentWeapon.Name:lower():find("launcher") or currentWeapon.Name:lower():find("shotgun") or currentWeapon.Name:lower():find("ray") or currentWeapon.Name:lower():find("blaster") or currentWeapon.Name:lower():find("sniper") or currentWeapon.Name:lower():find("bow") or currentWeapon.Name:lower():find("harpoon")) then
+                if not currentWeapon and player:FindFirstChild("Backpack") then
                     for _, item in ipairs(player.Backpack:GetChildren()) do
                         if item:IsA("Tool") then
                             local itemName = item.Name:lower()
@@ -64,9 +122,9 @@ function AutoFarmEquipWeapon()
                     end
                 end
                 
-                if not shark then
+                if not shark and game.Workspace then
                     for _, obj in ipairs(game.Workspace:GetChildren()) do
-                        if obj.Name:lower():find("shark") and obj:FindFirstChild("HumanoidRootPart") then
+                        if obj.Name:lower():find("shark") then
                             shark = obj
                             break
                         end
@@ -74,7 +132,7 @@ function AutoFarmEquipWeapon()
                 end
 
                 if currentWeapon and shark then
-                    local sharkHRP = shark:FindFirstChild("HumanoidRootPart") or shark:FindFirstChildOfClass("MeshPart") or shark:FindFirstChild("Body")
+                    local sharkHRP = shark:FindFirstChild("HumanoidRootPart") or shark:FindFirstChildOfClass("MeshPart") or shark:FindFirstChild("Body") or shark.PrimaryPart
                     if sharkHRP then
                         local remote = currentWeapon:FindFirstChild("Shoot") or currentWeapon:FindFirstChild("Fire") or currentWeapon:FindFirstChild("RemoteEvent")
                         if remote and remote:IsA("RemoteEvent") then
@@ -89,66 +147,39 @@ function AutoFarmEquipWeapon()
     end)
 end
 
-local AutoFarmEquipWeaponBoat = Tab:CreateToggle({
+local AutoFarmEquipWeaponBoatToggle = Tab:CreateToggle({
    Name = "Auto Farm Equip Weapon Boat (Alpha)",
    CurrentValue = false,
    Flag = "AutoFarmEquipWeaponBoat",
    Callback = function(Value)
        getgenv().AutoFarmEquipWeaponBoat = Value
        if Value then
-           AutoFarmEquipWeaponBoat()
+           SafeAutoFarmEquipWeaponBoat()
        end
    end,
 })
 
-function AutoFarmEquipWeaponBoat()
-    spawn(function()
-        while getgenv().AutoFarmEquipWeaponBoat do
-            wait(0.1)
+local function SafeAutoFarmChest()
+    task.spawn(function()
+        while getgenv().AutoFarmChest do
+            task.wait(0.1)
             pcall(function()
                 local player = game.Players.LocalPlayer
+                if not player then return end
                 local character = player.Character
-                if not character then return end
-                
-                local currentWeapon = character:FindFirstChildOfClass("Tool")
-                if not currentWeapon or not (currentWeapon.Name:lower():find("gun") or currentWeapon.Name:lower():find("rifle") or currentWeapon.Name:lower():find("rocket") or currentWeapon.Name:lower():find("launcher") or currentWeapon.Name:lower():find("shotgun") or currentWeapon.Name:lower():find("ray") or currentWeapon.Name:lower():find("blaster") or currentWeapon.Name:lower():find("sniper") or currentWeapon.Name:lower():find("bow") or currentWeapon.Name:lower():find("harpoon")) then
-                    for _, item in ipairs(player.Backpack:GetChildren()) do
-                        if item:IsA("Tool") then
-                            local itemName = item.Name:lower()
-                            if itemName:find("gun") or itemName:find("rifle") or itemName:find("rocket") or itemName:find("launcher") or itemName:find("shotgun") or itemName:find("ray") or itemName:find("blaster") or itemName:find("sniper") or itemName:find("bow") or itemName:find("harpoon") then
-                                item.Parent = character
-                                currentWeapon = item
-                                break
-                            end
-                        end
-                    end
-                end
+                if not character or not character:FindFirstChild("HumanoidRootPart") then return end
 
-                local shark = nil
-                for _, p in ipairs(game.Players:GetPlayers()) do
-                    if p ~= player and p.Character and p.Character:FindFirstChild("Shark") then
-                        shark = p.Character
-                        break
-                    end
-                end
-                
-                if not shark then
+                if game.Workspace then
                     for _, obj in ipairs(game.Workspace:GetChildren()) do
-                        if obj.Name:lower():find("shark") and obj:FindFirstChild("HumanoidRootPart") then
-                            shark = obj
-                            break
-                        end
-                    end
-                end
-
-                if currentWeapon and shark then
-                    local sharkHRP = shark:FindFirstChild("HumanoidRootPart") or shark:FindFirstChildOfClass("MeshPart") or shark:FindFirstChild("Body")
-                    if sharkHRP then
-                        local remote = currentWeapon:FindFirstChild("Shoot") or currentWeapon:FindFirstChild("Fire") or currentWeapon:FindFirstChild("RemoteEvent")
-                        if remote and remote:IsA("RemoteEvent") then
-                            remote:FireServer(sharkHRP.Position)
-                        else
-                            currentWeapon:Activate()
+                        if obj.Name:lower():find("chest") or obj.Name:lower():find("gift") or obj.Name:lower():find("treasure") then
+                            local part = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChildOfClass("MeshPart") or obj:FindFirstChildOfClass("Part")
+                            if part then
+                                character.HumanoidRootPart.CFrame = part.CFrame + Vector3.new(0, 3, 0)
+                                if firetouchinterest then
+                                    firetouchinterest(character.HumanoidRootPart, part, 0)
+                                    firetouchinterest(character.HumanoidRootPart, part, 1)
+                                end
+                            end
                         end
                     end
                 end
@@ -157,34 +188,60 @@ function AutoFarmEquipWeaponBoat()
     end)
 end
 
-local AutoFarmChest = Tab:CreateToggle({
+local AutoFarmChestToggle = Tab:CreateToggle({
    Name = "Auto Farm Chest",
    CurrentValue = false,
    Flag = "AutoFarmChest",
    Callback = function(Value)
        getgenv().AutoFarmChest = Value
        if Value then
-           AutoFarmChest()
+           SafeAutoFarmChest()
        end
    end,
 })
 
-function AutoFarmChest()
-    spawn(function()
-        while getgenv().AutoFarmChest do
-            wait(0.1)
-            pcall(function()
-                local player = game.Players.LocalPlayer
-                local character = player.Character
-                if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+local Section = Tab:CreateSection("ESP")
 
-                for _, obj in ipairs(game.Workspace:GetChildren()) do
-                    if obj.Name:lower():find("chest") or obj.Name:lower():find("gift") or obj.Name:lower():find("treasure") then
-                        local part = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChildOfClass("MeshPart") or obj:FindFirstChildOfClass("Part")
-                        if part then
-                            character.HumanoidRootPart.CFrame = part.CFrame + Vector3.new(0, 3, 0)
-                            firetouchinterest(character.HumanoidRootPart, part, 0)
-                            firetouchinterest(character.HumanoidRootPart, part, 1)
+local function ApplyHighlight(model, color, name)
+    if model and not model:FindFirstChild(name) then
+        pcall(function()
+            local hl = Instance.new("Highlight")
+            hl.Name = name
+            hl.FillColor = color
+            hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+            hl.FillTransparency = 0.5
+            hl.OutlineTransparency = 0
+            hl.Parent = model
+        end)
+    end
+end
+
+local function ClearESP(name)
+    pcall(function()
+        if game.Workspace then
+            for _, obj in ipairs(game.Workspace:GetDescendants()) do
+                if obj.Name == name then
+                    obj:Destroy()
+                end
+            end
+        end
+    end)
+end
+
+local function SafeESPShark()
+    task.spawn(function()
+        while getgenv().ESPShark do
+            task.wait(1)
+            pcall(function()
+                for _, p in ipairs(game.Players:GetPlayers()) do
+                    if p.Character and p.Character:FindFirstChild("Shark") then
+                        ApplyHighlight(p.Character, Color3.fromRGB(255, 0, 0), "SharkESP")
+                    end
+                end
+                if game.Workspace then
+                    for _, obj in ipairs(game.Workspace:GetChildren()) do
+                        if obj.Name:lower():find("shark") then
+                            ApplyHighlight(obj, Color3.fromRGB(255, 0, 0), "SharkESP")
                         end
                     end
                 end
@@ -193,73 +250,28 @@ function AutoFarmChest()
     end)
 end
 
-local Section = Tab:CreateSection("ESP")
-
-local ESPShark = Tab:CreateToggle({
+local ESPSharkToggle = Tab:CreateToggle({
    Name = "ESP Shark",
    CurrentValue = false,
    Flag = "ESPShark",
    Callback = function(Value)
        getgenv().ESPShark = Value
        if Value then
-           ESPShark()
+           SafeESPShark()
        else
-           ClearESPShark()
+           ClearESP("SharkESP")
        end
    end,
 })
 
-function ESPShark()
-    spawn(function()
-        while getgenv().ESPShark do
-            wait(1)
-            pcall(function()
-                for _, p in ipairs(game.Players:GetPlayers()) do
-                    if p.Character and p.Character:FindFirstChild("Shark") then
-                        ApplyHighlight(p.Character, Color3.fromRGB(255, 0, 0), "SharkESP")
-                    end
-                end
-                for _, obj in ipairs(game.Workspace:GetChildren()) do
-                    if obj.Name:lower():find("shark") then
-                        ApplyHighlight(obj, Color3.fromRGB(255, 0, 0), "SharkESP")
-                    end
-                end
-            end)
-        end
-    end)
-end
-
-function ClearESPShark()
-    pcall(function()
-        for _, obj in ipairs(game.Workspace:GetDescendants()) do
-            if obj.Name == "SharkESP" then
-                obj:Destroy()
-            end
-        end
-    end)
-end
-
-local ESPPlayers = Tab:CreateToggle({
-   Name = "ESP Players",
-   CurrentValue = false,
-   Flag = "ESPPlayers",
-   Callback = function(Value)
-       getgenv().ESPPlayers = Value
-       if Value then
-           ESPPlayers()
-       else
-           ClearESPPlayers()
-       end
-   end,
-})
-
-function ESPPlayers()
-    spawn(function()
+local function SafeESPPlayers()
+    task.spawn(function()
         while getgenv().ESPPlayers do
-            wait(1)
+            task.wait(1)
             pcall(function()
+                local lp = game.Players.LocalPlayer
                 for _, p in ipairs(game.Players:GetPlayers()) do
-                    if p ~= game.Players.LocalPlayer and p.Character then
+                    if p ~= lp and p.Character then
                         ApplyHighlight(p.Character, Color3.fromRGB(0, 255, 0), "PlayerESP")
                     end
                 end
@@ -268,39 +280,23 @@ function ESPPlayers()
     end)
 end
 
-function ClearESPPlayers()
-    pcall(function()
-        for _, obj in ipairs(game.Workspace:GetDescendants()) do
-            if obj.Name == "PlayerESP" then
-                obj:Destroy()
-            end
-        end
-    end)
-end
-
-function ApplyHighlight(model, color, name)
-    if not model:FindFirstChild(name) then
-        local hl = Instance.new("Highlight")
-        hl.Name = name
-        hl.FillColor = color
-        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-        hl.FillTransparency = 0.5
-        hl.OutlineTransparency = 0
-        hl.Parent = model
-    end
-end
+local ESPPlayersToggle = Tab:CreateToggle({
+   Name = "ESP Players",
+   CurrentValue = false,
+   Flag = "ESPPlayers",
+   Callback = function(Value)
+       getgenv().ESPPlayers = Value
+       if Value then
+           SafeESPPlayers()
+       else
+           ClearESP("PlayerESP")
+       end
+   end,
+})
 
 Rayfield:Notify({
    Title = "SharkBite 2 Hub Loaded!",
-   Content = "Script loaded without Key System.",
+   Content = "Script loaded successfully.",
    Duration = 5.0,
-   Image = 4483362458,
-   Actions = {
-      Ignore = {
-         Name = "Okay!",
-         Callback = function()
-            print("User acknowledged notification.")
-         end
-      }
-   }
+   Image = 4483362458
 })
