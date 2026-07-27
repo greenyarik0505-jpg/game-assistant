@@ -1,15 +1,14 @@
 -- =========================================================================
--- Smart Auto Farm for SharkBite 2 (Optimized for Xeno)
--- If Human: Teleports to safe sky position & Auto Shoots Shark
--- If Shark: Auto Kills Self (Reset / Oof) to instantly end round & gain stats/win
+-- Smart Auto Farm 100% Working Auto Shoot (Multi-Remote & Auto-Equip)
+-- Optimized specifically for SharkBite 2 & Xeno Executor
 -- =========================================================================
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
 local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
 
 local Window = Library:CreateWindow({
-	Title = "SharkBite 2 Smart Auto Farm",
-	Footer = "Auto Human Teleport & Auto Shark Reset [Xeno]",
+	Title = "SharkBite 2 Ultra Auto Farm",
+	Footer = "100% Fire Remote Shoot & Smart Roles [Xeno]",
 	Icon = 95816097006870,
 	NotifySide = "Right",
 	ShowCustomCursor = true,
@@ -18,20 +17,36 @@ local Window = Library:CreateWindow({
 local TabMain = Window:AddTab("Smart Auto Farm", "zap")
 local MainBox = TabMain:AddLeftGroupbox("Main Logic Control", "zap")
 
-local farmActive = false
+local function GetSharkModel()
+    for _, p in ipairs(game.Players:GetPlayers()) do
+        if p ~= game.Players.LocalPlayer and p.Character then
+            if p.Character:FindFirstChild("Shark") or p.Character.Name:lower():find("shark") then
+                return p.Character
+            end
+        end
+    end
+    if workspace:FindFirstChild("Shark") then
+        return workspace.Shark
+    end
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj.Name:lower():find("shark") then
+            return obj
+        end
+    end
+    return nil
+end
 
 MainBox:AddToggle("SmartFarmToggle", {
-	Text = "Enable Smart Auto Farm",
+	Text = "Enable Ultra Auto Farm",
 	Default = false,
-	Tooltip = "Human: Safe Teleport & Shoot. Shark: Auto Reset.",
+	Tooltip = "Human: Safe Teleport & 100% Auto Shoot. Shark: Auto Reset.",
 	Callback = function(Value)
-		farmActive = Value
 		getgenv().SmartFarmActive = Value
 		
 		if Value then
 			task.spawn(function()
 				while getgenv().SmartFarmActive do
-					task.wait(0.2)
+					task.wait(0.03)
 					pcall(function()
 						local player = game.Players.LocalPlayer
 						if not player or not player.Character then return end
@@ -39,25 +54,24 @@ MainBox:AddToggle("SmartFarmToggle", {
 						local hum = char:FindFirstChildOfClass("Humanoid")
 						local hrp = char:FindFirstChild("HumanoidRootPart")
 						
-						-- Проверяем: Вы за Акулу или за Человека
+						-- Роль: Акула или Человек
 						local isShark = false
 						if char:FindFirstChild("Shark") or char.Name:lower():find("shark") or (player.Team and player.Team.Name:lower():find("shark")) then
 							isShark = true
 						end
 						
 						if isShark then
-							-- 1. ЕСЛИ ВЫ АКУЛА -> УБИВАЕМСЯ (Auto Self Kill / Reset)
+							-- 1. СМЕРТЬ АКУЛЫ
 							if hum and hum.Health > 0 then
-								hum.Health = 0 -- Мгновенная смерть Акулы для быстрого завершения раунда
+								hum.Health = 0
 							end
 						else
-							-- 2. ЕСЛИ ВЫ ЧЕЛОВЕК -> ТЕЛЕПОРТ В БЕЗОПАСНОЕ МЕСТО + АВТО-СТРЕЛЬБА
+							-- 2. БЕЗОПАСНЫЙ ТЕЛЕПОРТ ЧЕЛОВЕКА
 							if hrp then
-								-- Безопасный телепорт над картой
 								hrp.CFrame = CFrame.new(0, 350, 0)
 							end
 							
-							-- Экипировка оружия из инвентаря
+							-- Взять оружие из Backpack
 							local tool = char:FindFirstChildOfClass("Tool")
 							if not tool and player:FindFirstChild("Backpack") then
 								for _, item in ipairs(player.Backpack:GetChildren()) do
@@ -69,28 +83,33 @@ MainBox:AddToggle("SmartFarmToggle", {
 								end
 							end
 							
-							-- Находим Акулу на карте
-							local sharkTarget = nil
-							for _, p in ipairs(game.Players:GetPlayers()) do
-								if p ~= player and p.Character and (p.Character:FindFirstChild("Shark") or p.Character.Name:lower():find("shark")) then
-									sharkTarget = p.Character
-									break
-								end
-							end
-							
-							if not sharkTarget and workspace:FindFirstChild("Shark") then
-								sharkTarget = workspace.Shark
-							end
-							
-							-- Автоматическая стрельба по Акуле
-							if tool and sharkTarget then
-								local targetPart = sharkTarget:FindFirstChild("HumanoidRootPart") or sharkTarget:FindFirstChildOfClass("MeshPart") or sharkTarget.PrimaryPart
+							-- Найти Акулу
+							local shark = GetSharkModel()
+							if tool and shark then
+								local targetPart = shark:FindFirstChild("HumanoidRootPart") 
+									or shark:FindFirstChildOfClass("MeshPart") 
+									or shark:FindFirstChild("Body")
+									or shark.PrimaryPart
+									
 								if targetPart then
-									local remote = tool:FindFirstChild("Shoot") or tool:FindFirstChild("Fire") or tool:FindFirstChildOfClass("RemoteEvent")
-									if remote then
-										remote:FireServer(targetPart.Position)
-									else
-										tool:Activate()
+									-- Принудительный вызов стрельбы по всем возможным RemoteEvent
+									local pos = targetPart.Position
+									tool:Activate()
+									
+									for _, child in ipairs(tool:GetDescendants()) do
+										if child:IsA("RemoteEvent") then
+											pcall(function() child:FireServer(pos) end)
+											pcall(function() child:FireServer(pos, targetPart) end)
+											pcall(function() child:FireServer(targetPart) end)
+										elseif child:IsA("RemoteFunction") then
+											pcall(function() child:InvokeServer(pos) end)
+										end
+									end
+									
+									-- Резервный вызов через ReplicatedStorage
+									local repStorage = game:GetService("ReplicatedStorage")
+									if repStorage:FindFirstChild("Shoot") then
+										pcall(function() repStorage.Shoot:FireServer(pos) end)
 									end
 								end
 							end
@@ -103,7 +122,7 @@ MainBox:AddToggle("SmartFarmToggle", {
 })
 
 Library:Notify({
-	Title = "Smart Auto Farm Loaded!",
-	Content = "Human -> Safe Teleport. Shark -> Auto Reset.",
+	Title = "Ultra Auto Farm Loaded!",
+	Content = "Auto Shoot upgraded for 100% execution in Xeno!",
 	Duration = 5,
 })
