@@ -3,33 +3,106 @@ import time
 import os
 import psutil
 import ctypes
+from ctypes import wintypes
 import threading
 import customtkinter as ctk
-from datetime import timedelta
-import mss
 
-# Set appearance mode and theme
+# Set initial appearance mode
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
+
+class DWM_TIMING_INFO(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", wintypes.UINT),
+        ("rateRefresh", wintypes.UINT64 * 2),
+        ("qpcRefreshPeriod", wintypes.UINT64),
+        ("rateCompose", wintypes.UINT64 * 2),
+        ("qpcVBlank", wintypes.UINT64),
+        ("cRefresh", wintypes.UINT64),
+        ("cDXActive", wintypes.UINT),
+        ("cDXVideoCreated", wintypes.UINT),
+        ("cCommandSignaled", wintypes.UINT),
+        ("qpcCommandFrameStart", wintypes.UINT64),
+        ("cFramesReceived", wintypes.UINT64),
+        ("cCursorsSkipped", wintypes.UINT),
+        ("cFramesShown", wintypes.UINT),
+        ("cPresentRefresh", wintypes.UINT64),
+        ("cActiveRefreshes", wintypes.UINT64),
+        ("cBuffersEmpty", wintypes.UINT64)
+    ]
+
+# Translations dictionary
+TRANSLATIONS = {
+    "UA": {
+        "title": "🎮 Game Assistant",
+        "topmost": "Поверх всіх вікон",
+        "mini_mode": "🔍 Міні-режим",
+        "fps_label": "⚡ FPS Екрана / Дисплея",
+        "ram_label": "💾 RAM Використання",
+        "clean_ram": "🧹 Очистити RAM",
+        "timer_title": "⏱️ Ігровий Таймер",
+        "start_pause": "Старт / Пауза",
+        "reset": "Скинути",
+        "notes_title": "📝 Швидкі Нотатки",
+        "theme": "Тема",
+        "lang": "Мова",
+        "full_mode": "⚙️ Повне",
+        "clean": "🧹 Очистити"
+    },
+    "EN": {
+        "title": "🎮 Game Assistant",
+        "topmost": "Always on Top",
+        "mini_mode": "🔍 Mini Mode",
+        "fps_label": "⚡ Display FPS",
+        "ram_label": "💾 RAM Usage",
+        "clean_ram": "🧹 Clean RAM",
+        "timer_title": "⏱️ Game Timer",
+        "start_pause": "Start / Pause",
+        "reset": "Reset",
+        "notes_title": "📝 Quick Notes",
+        "theme": "Theme",
+        "lang": "Language",
+        "full_mode": "⚙️ Full",
+        "clean": "🧹 Clean"
+    },
+    "RU": {
+        "title": "🎮 Game Assistant",
+        "topmost": "Поверх всех окон",
+        "mini_mode": "🔍 Мини-режим",
+        "fps_label": "⚡ FPS Экрана / Дисплея",
+        "ram_label": "💾 Использование RAM",
+        "clean_ram": "🧹 Очистить RAM",
+        "timer_title": "⏱️ Игровой Таймер",
+        "start_pause": "Старт / Пауза",
+        "reset": "Сброс",
+        "notes_title": "📝 Быстрые Заметки",
+        "theme": "Тема",
+        "lang": "Язык",
+        "full_mode": "⚙️ Полный",
+        "clean": "🧹 Очистить"
+    }
+}
 
 class GameAssistantApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
         self.title("🎮 Game Assistant")
-        self.normal_geometry = "450x620"
-        self.compact_geometry = "240x180"
+        self.normal_geometry = "460x650"
+        self.compact_geometry = "250x190"
         
         self.geometry(self.normal_geometry)
         self.resizable(False, False)
         
-        # State variables
+        # Settings state
+        self.current_lang = "UA"
+        self.current_theme = "Dark"
+        
         self.is_compact = False
         self.timer_running = False
         self.timer_seconds = 0
         
-        # Real Display/Screen FPS calculation via MSS
-        self.real_fps = 0
+        self.fps_value = 0
         self.fps_lock = threading.Lock()
         self.running = True
 
@@ -38,34 +111,49 @@ class GameAssistantApp(ctk.CTk):
         # Always on top setup by default
         self.attributes("-topmost", True)
 
-        # Start Screen Monitor Thread
-        self.monitor_thread = threading.Thread(target=self._measure_screen_fps, daemon=True)
+        # Start DWM System FPS Monitor Thread
+        self.monitor_thread = threading.Thread(target=self._measure_dwm_fps, daemon=True)
         self.monitor_thread.start()
 
         self.update_stats()
         self.update_timer()
 
-    def _measure_screen_fps(self):
-        """ Background thread measuring real monitor screen refresh/render FPS using MSS """
-        with mss.mss() as sct:
-            monitor = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
-            frame_count = 0
-            start_time = time.time()
-            
-            while self.running:
-                try:
-                    sct.grab(monitor)
-                    frame_count += 1
+    def _measure_dwm_fps(self):
+        """ Native Windows DWM VSync & Frame Rate Monitor """
+        dwmapi = ctypes.windll.dwmapi
+        timing = DWM_TIMING_INFO()
+        timing.cbSize = ctypes.sizeof(DWM_TIMING_INFO)
+
+        last_c_refresh = 0
+        last_time = time.time()
+
+        while self.running:
+            try:
+                res = dwmapi.DwmGetCompositionTimingInfo(0, ctypes.byref(timing))
+                if res == 0:
+                    current_refresh = timing.cRefresh
                     now = time.time()
-                    elapsed = now - start_time
+                    elapsed = now - last_time
+
                     if elapsed >= 0.5:
-                        calc_fps = int(frame_count / elapsed)
-                        with self.fps_lock:
-                            self.real_fps = calc_fps
-                        frame_count = 0
-                        start_time = now
-                except Exception:
-                    time.sleep(0.1)
+                        if last_c_refresh > 0:
+                            diff = current_refresh - last_c_refresh
+                            calc_fps = int(diff / elapsed)
+                            with self.fps_lock:
+                                self.fps_value = calc_fps
+                        last_c_refresh = current_refresh
+                        last_time = now
+                else:
+                    user32 = ctypes.windll.user32
+                    hdc = user32.GetDC(0)
+                    gdi32 = ctypes.windll.gdi32
+                    refresh_rate = gdi32.GetDeviceCaps(hdc, 116)
+                    user32.ReleaseDC(0, hdc)
+                    with self.fps_lock:
+                        self.fps_value = refresh_rate if refresh_rate > 0 else 60
+            except Exception:
+                pass
+            time.sleep(0.1)
 
     def setup_ui(self):
         # 1. Main / Normal View Container
@@ -78,32 +166,54 @@ class GameAssistantApp(ctk.CTk):
 
         self.title_label = ctk.CTkLabel(
             self.header_frame, 
-            text="🎮 Game Assistant", 
+            text=TRANSLATIONS[self.current_lang]["title"], 
             font=ctk.CTkFont(size=20, weight="bold")
         )
-        self.title_label.pack(pady=8)
+        self.title_label.pack(pady=6)
 
-        # Switches Frame
-        self.switches_frame = ctk.CTkFrame(self.header_frame, fg_color="transparent")
-        self.switches_frame.pack(pady=(0, 8))
+        # Controls & Settings Row 1 (Topmost & Mini Mode)
+        self.ctrl_row1 = ctk.CTkFrame(self.header_frame, fg_color="transparent")
+        self.ctrl_row1.pack(pady=2)
 
         self.topmost_var = ctk.BooleanVar(value=True)
         self.topmost_switch = ctk.CTkSwitch(
-            self.switches_frame, 
-            text="Поверх всіх вікон", 
+            self.ctrl_row1, 
+            text=TRANSLATIONS[self.current_lang]["topmost"], 
             variable=self.topmost_var, 
             command=self.toggle_topmost
         )
         self.topmost_switch.pack(side="left", padx=10)
 
         self.compact_btn = ctk.CTkButton(
-            self.switches_frame,
-            text="🔍 Міні-режим",
+            self.ctrl_row1,
+            text=TRANSLATIONS[self.current_lang]["mini_mode"],
             width=100,
             fg_color="#3a7ebf",
             command=self.enable_compact_mode
         )
         self.compact_btn.pack(side="left", padx=5)
+
+        # Controls & Settings Row 2 (Language & Theme selectors)
+        self.ctrl_row2 = ctk.CTkFrame(self.header_frame, fg_color="transparent")
+        self.ctrl_row2.pack(pady=(2, 6))
+
+        self.lang_menu = ctk.CTkOptionMenu(
+            self.ctrl_row2,
+            values=["UA", "EN", "RU"],
+            width=70,
+            command=self.change_language
+        )
+        self.lang_menu.set(self.current_lang)
+        self.lang_menu.pack(side="left", padx=5)
+
+        self.theme_menu = ctk.CTkOptionMenu(
+            self.ctrl_row2,
+            values=["Dark", "Light", "System"],
+            width=85,
+            command=self.change_theme
+        )
+        self.theme_menu.set(self.current_theme)
+        self.theme_menu.pack(side="left", padx=5)
 
         # Dashboard / Stats Frame
         self.stats_frame = ctk.CTkFrame(self.normal_view, corner_radius=10)
@@ -111,7 +221,7 @@ class GameAssistantApp(ctk.CTk):
 
         self.fps_label = ctk.CTkLabel(
             self.stats_frame, 
-            text="⚡ Display FPS: --", 
+            text=f"{TRANSLATIONS[self.current_lang]['fps_label']}: --", 
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color="#00FFCC"
         )
@@ -119,7 +229,7 @@ class GameAssistantApp(ctk.CTk):
 
         self.ram_label = ctk.CTkLabel(
             self.stats_frame, 
-            text="💾 RAM Використання: --%", 
+            text=f"{TRANSLATIONS[self.current_lang]['ram_label']}: --%", 
             font=ctk.CTkFont(size=14)
         )
         self.ram_label.pack(pady=2)
@@ -130,7 +240,7 @@ class GameAssistantApp(ctk.CTk):
 
         self.clean_ram_btn = ctk.CTkButton(
             self.stats_frame, 
-            text="🧹 Очистити RAM", 
+            text=TRANSLATIONS[self.current_lang]["clean_ram"], 
             command=self.clean_ram,
             fg_color="#1f538d",
             hover_color="#14375e"
@@ -143,7 +253,7 @@ class GameAssistantApp(ctk.CTk):
 
         self.timer_title = ctk.CTkLabel(
             self.timer_frame, 
-            text="⏱️ Ігровий Таймер", 
+            text=TRANSLATIONS[self.current_lang]["timer_title"], 
             font=ctk.CTkFont(size=15, weight="bold")
         )
         self.timer_title.pack(pady=3)
@@ -161,7 +271,7 @@ class GameAssistantApp(ctk.CTk):
 
         self.start_timer_btn = ctk.CTkButton(
             self.timer_btn_frame, 
-            text="Старт / Пауза", 
+            text=TRANSLATIONS[self.current_lang]["start_pause"], 
             width=110, 
             command=self.toggle_timer
         )
@@ -169,7 +279,7 @@ class GameAssistantApp(ctk.CTk):
 
         self.reset_timer_btn = ctk.CTkButton(
             self.timer_btn_frame, 
-            text="Скинути", 
+            text=TRANSLATIONS[self.current_lang]["reset"], 
             width=90, 
             fg_color="#a83232",
             hover_color="#7a2323",
@@ -183,7 +293,7 @@ class GameAssistantApp(ctk.CTk):
 
         self.notes_title = ctk.CTkLabel(
             self.notes_frame, 
-            text="📝 Швидкі Нотатки", 
+            text=TRANSLATIONS[self.current_lang]["notes_title"], 
             font=ctk.CTkFont(size=15, weight="bold")
         )
         self.notes_title.pack(pady=4)
@@ -229,7 +339,7 @@ class GameAssistantApp(ctk.CTk):
 
         self.mini_clean_btn = ctk.CTkButton(
             self.mini_btn_frame,
-            text="🧹 Очистити",
+            text=TRANSLATIONS[self.current_lang]["clean"],
             width=80,
             height=24,
             font=ctk.CTkFont(size=11),
@@ -239,7 +349,7 @@ class GameAssistantApp(ctk.CTk):
 
         self.expand_btn = ctk.CTkButton(
             self.mini_btn_frame,
-            text="⚙️ Повне",
+            text=TRANSLATIONS[self.current_lang]["full_mode"],
             width=70,
             height=24,
             font=ctk.CTkFont(size=11),
@@ -257,6 +367,29 @@ class GameAssistantApp(ctk.CTk):
             except Exception:
                 pass
         self.notes_textbox.bind("<KeyRelease>", self.save_notes)
+
+    def change_language(self, new_lang):
+        self.current_lang = new_lang
+        t = TRANSLATIONS[new_lang]
+        
+        self.title_label.configure(text=t["title"])
+        self.topmost_switch.configure(text=t["topmost"])
+        self.compact_btn.configure(text=t["mini_mode"])
+        
+        self.clean_ram_btn.configure(text=t["clean_ram"])
+        self.timer_title.configure(text=t["timer_title"])
+        self.start_timer_btn.configure(text=t["start_pause"])
+        self.reset_timer_btn.configure(text=t["reset"])
+        self.notes_title.configure(text=t["notes_title"])
+        
+        self.mini_clean_btn.configure(text=t["clean"])
+        self.expand_btn.configure(text=t["full_mode"])
+        
+        self.update_stats()
+
+    def change_theme(self, new_theme):
+        self.current_theme = new_theme
+        ctk.set_appearance_mode(new_theme)
 
     def enable_compact_mode(self):
         self.is_compact = True
@@ -279,14 +412,15 @@ class GameAssistantApp(ctk.CTk):
 
     def update_stats(self):
         with self.fps_lock:
-            current_fps = self.real_fps
+            current_fps = self.fps_value
 
-        fps_text = f"⚡ Screen FPS: {current_fps}"
+        t = TRANSLATIONS[self.current_lang]
+        fps_text = f"{t['fps_label']}: {current_fps}"
         self.fps_label.configure(text=fps_text)
         self.mini_fps_label.configure(text=f"⚡ FPS: {current_fps}")
 
         ram_perm = psutil.virtual_memory().percent
-        self.ram_label.configure(text=f"💾 RAM Використання: {ram_perm}%")
+        self.ram_label.configure(text=f"{t['ram_label']}: {ram_perm}%")
         self.ram_bar.set(ram_perm / 100.0)
         self.mini_ram_label.configure(text=f"💾 RAM: {ram_perm}%")
 
