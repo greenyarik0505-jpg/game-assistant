@@ -3,8 +3,10 @@ import time
 import os
 import psutil
 import ctypes
+import threading
 import customtkinter as ctk
 from datetime import timedelta
+import mss
 
 # Set appearance mode and theme
 ctk.set_appearance_mode("Dark")
@@ -25,17 +27,45 @@ class GameAssistantApp(ctk.CTk):
         self.is_compact = False
         self.timer_running = False
         self.timer_seconds = 0
-        self.last_frame_time = time.time()
-        self.frame_count = 0
-        self.fps_value = 0
+        
+        # Real Display/Screen FPS calculation via MSS
+        self.real_fps = 0
+        self.fps_lock = threading.Lock()
+        self.running = True
 
         self.setup_ui()
         
         # Always on top setup by default
         self.attributes("-topmost", True)
-        
+
+        # Start Screen Monitor Thread
+        self.monitor_thread = threading.Thread(target=self._measure_screen_fps, daemon=True)
+        self.monitor_thread.start()
+
         self.update_stats()
         self.update_timer()
+
+    def _measure_screen_fps(self):
+        """ Background thread measuring real monitor screen refresh/render FPS using MSS """
+        with mss.mss() as sct:
+            monitor = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
+            frame_count = 0
+            start_time = time.time()
+            
+            while self.running:
+                try:
+                    sct.grab(monitor)
+                    frame_count += 1
+                    now = time.time()
+                    elapsed = now - start_time
+                    if elapsed >= 0.5:
+                        calc_fps = int(frame_count / elapsed)
+                        with self.fps_lock:
+                            self.real_fps = calc_fps
+                        frame_count = 0
+                        start_time = now
+                except Exception:
+                    time.sleep(0.1)
 
     def setup_ui(self):
         # 1. Main / Normal View Container
@@ -81,7 +111,7 @@ class GameAssistantApp(ctk.CTk):
 
         self.fps_label = ctk.CTkLabel(
             self.stats_frame, 
-            text="⚡ FPS: --", 
+            text="⚡ Display FPS: --", 
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color="#00FFCC"
         )
@@ -248,16 +278,12 @@ class GameAssistantApp(ctk.CTk):
             self.attributes("-topmost", self.topmost_var.get())
 
     def update_stats(self):
-        now = time.time()
-        self.frame_count += 1
-        elapsed = now - self.last_frame_time
-        if elapsed >= 1.0:
-            self.fps_value = int(self.frame_count / elapsed)
-            self.frame_count = 0
-            self.last_frame_time = now
-            fps_text = f"⚡ FPS: {self.fps_value}"
-            self.fps_label.configure(text=f"⚡ GUI / Screen FPS: {self.fps_value}")
-            self.mini_fps_label.configure(text=fps_text)
+        with self.fps_lock:
+            current_fps = self.real_fps
+
+        fps_text = f"⚡ Screen FPS: {current_fps}"
+        self.fps_label.configure(text=fps_text)
+        self.mini_fps_label.configure(text=f"⚡ FPS: {current_fps}")
 
         ram_perm = psutil.virtual_memory().percent
         self.ram_label.configure(text=f"💾 RAM Використання: {ram_perm}%")
@@ -309,6 +335,11 @@ class GameAssistantApp(ctk.CTk):
         except Exception:
             pass
 
+    def on_closing(self):
+        self.running = False
+        self.destroy()
+
 if __name__ == "__main__":
     app = GameAssistantApp()
+    app.protocol("WM_DELETE_WINDOW", app.on_closing)
     app.mainloop()
