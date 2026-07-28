@@ -1,17 +1,12 @@
+import os
 import sys
 import time
-import os
 import psutil
 import ctypes
-from ctypes import wintypes
 import threading
-import customtkinter as ctk
+import webview
 
-# Set initial appearance mode
-ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
-
-# Define C types for DWM
+# Definitions for Windows DWM API
 c_ulonglong = ctypes.c_ulonglong
 c_uint32 = ctypes.c_uint32
 
@@ -35,95 +30,609 @@ class DWM_TIMING_INFO(ctypes.Structure):
         ("cBuffersEmpty", c_ulonglong)
     ]
 
-# Translations dictionary
-TRANSLATIONS = {
-    "UA": {
-        "title": "🎮 Game Assistant",
-        "topmost": "Поверх всіх вікон",
-        "mini_mode": "🔍 Міні-режим",
-        "fps_label": "⚡ System FPS",
-        "ram_label": "💾 RAM Використання",
-        "clean_ram": "🧹 Очистити RAM",
-        "timer_title": "⏱️ Ігровий Таймер",
-        "start_pause": "Старт / Пауза",
-        "reset": "Скинути",
-        "notes_title": "📝 Швидкі Нотатки",
-        "theme": "Тема",
-        "lang": "Мова",
-        "full_mode": "⚙️ Повне",
-        "clean": "🧹 Очистити"
-    },
-    "EN": {
-        "title": "🎮 Game Assistant",
-        "topmost": "Always on Top",
-        "mini_mode": "🔍 Mini Mode",
-        "fps_label": "⚡ System FPS",
-        "ram_label": "💾 RAM Usage",
-        "clean_ram": "🧹 Clean RAM",
-        "timer_title": "⏱️ Game Timer",
-        "start_pause": "Start / Pause",
-        "reset": "Reset",
-        "notes_title": "📝 Quick Notes",
-        "theme": "Theme",
-        "lang": "Language",
-        "full_mode": "⚙️ Full",
-        "clean": "🧹 Clean"
-    },
-    "RU": {
-        "title": "🎮 Game Assistant",
-        "topmost": "Поверх всех окон",
-        "mini_mode": "🔍 Мини-режим",
-        "fps_label": "⚡ System FPS",
-        "ram_label": "💾 Использование RAM",
-        "clean_ram": "🧹 Очистить RAM",
-        "timer_title": "⏱️ Игровой Таймер",
-        "start_pause": "Старт / Пауза",
-        "reset": "Сброс",
-        "notes_title": "📝 Быстрые Заметки",
-        "theme": "Тема",
-        "lang": "Язык",
-        "full_mode": "⚙️ Полный",
-        "clean": "🧹 Очистить"
-    }
-}
+HTML_UI = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Assistant</title>
+    <!-- Lucide Icons & Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-cyan: #06b6d4;
+            --accent-purple: #a855f7;
+            --accent-pink: #ec4899;
+            --accent-amber: #f59e0b;
+            --accent-emerald: #10b981;
+            --button-bg: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            --button-hover: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+            --danger-bg: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
 
-class GameAssistantApp(ctk.CTk):
+        body.light-theme {
+            --bg-gradient: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+            --card-bg: rgba(255, 255, 255, 0.85);
+            --card-border: rgba(0, 0, 0, 0.08);
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+            user-select: none;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            color: var(--text-main);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Custom Title Bar Dragging Area */
+        .title-bar {
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            background: rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--card-border);
+            -webkit-app-region: drag;
+        }
+
+        .title-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
+            font-size: 15px;
+            letter-spacing: 0.5px;
+            background: linear-gradient(90deg, #38bdf8, #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .title-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            -webkit-app-region: no-drag;
+        }
+
+        .icon-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--card-border);
+            color: var(--text-muted);
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .icon-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: var(--text-main);
+            transform: translateY(-1px);
+        }
+
+        /* App Main Content */
+        .content {
+            flex: 1;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            overflow-y: auto;
+        }
+
+        /* Glassmorphic Cards */
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(255, 255, 255, 0.18);
+        }
+
+        /* Stats Section */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .stat-card {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .stat-value {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        .fps-value {
+            color: var(--accent-cyan);
+            text-shadow: 0 0 15px rgba(6, 182, 212, 0.4);
+        }
+
+        .ram-value {
+            color: var(--accent-purple);
+        }
+
+        .progress-bar-bg {
+            height: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 4px;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #a855f7, #ec4899);
+            border-radius: 10px;
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .action-btn {
+            background: var(--button-bg);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 10px 16px;
+            font-weight: 600;
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        .action-btn:hover {
+            background: var(--button-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+        }
+
+        .action-btn:active {
+            transform: translateY(0);
+        }
+
+        .action-btn.danger {
+            background: var(--danger-bg);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+
+        .action-btn.danger:hover {
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+        }
+
+        /* Timer Section */
+        .timer-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .timer-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .timer-display {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--accent-amber);
+            font-mono: monospace;
+            letter-spacing: 1px;
+            text-shadow: 0 0 15px rgba(245, 158, 11, 0.3);
+        }
+
+        .timer-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* Notes Section */
+        .notes-card {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-height: 140px;
+        }
+
+        .card-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-muted);
+
+        }
+
+        textarea {
+            width: 100%;
+            flex: 1;
+            background: rgba(0, 0, 0, 0.15);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 12px;
+            color: var(--text-main);
+            font-size: 13px;
+            resize: none;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        textarea:focus {
+            border-color: rgba(99, 102, 241, 0.5);
+            background: rgba(0, 0, 0, 0.25);
+        }
+
+        /* Mini Overlay View */
+        .mini-view {
+            display: none;
+            padding: 12px;
+            height: 100%;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        body.compact-mode .normal-view {
+            display: none;
+        }
+
+        body.compact-mode .mini-view {
+            display: flex;
+        }
+
+        .mini-stats {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .mini-badge {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 14px;
+            font-weight: 800;
+        }
+
+        /* Select controls */
+        select {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            outline: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Title Drag Bar -->
+    <div class="title-bar">
+        <div class="title-title">
+            <i data-lucide="gamepad-2"></i> GAME ASSISTANT
+        </div>
+        <div class="title-actions">
+            <select id="langSelect" onchange="changeLang(this.value)">
+                <option value="UA">UA</option>
+                <option value="EN">EN</option>
+                <option value="RU">RU</option>
+            </select>
+            <button class="icon-btn" onclick="toggleTheme()" title="Toggle Theme">
+                <i data-lucide="sun-moon" id="themeIcon"></i>
+            </button>
+            <button class="icon-btn" onclick="toggleCompactMode()" title="Mini Overlay Mode">
+                <i data-lucide="shrink" id="modeIcon"></i>
+            </button>
+            <button class="icon-btn" onclick="pywebview.api.close_app()" title="Close App">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Full View -->
+    <div class="content normal-view">
+        
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="card stat-card">
+                <div class="stat-header">
+                    <i data-lucide="zap" style="color: var(--accent-cyan);"></i> <span data-i18n="fps_label">System FPS</span>
+                </div>
+                <div class="stat-value fps-value" id="fpsVal">--</div>
+            </div>
+
+            <div class="card stat-card">
+                <div class="stat-header">
+                    <i data-lucide="cpu" style="color: var(--accent-purple);"></i> <span data-i18n="ram_label">RAM Usage</span>
+                </div>
+                <div class="stat-value ram-value" id="ramVal">--%</div>
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" id="ramBar"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Clean RAM Button Card -->
+        <button class="action-btn" onclick="cleanRam()">
+            <i data-lucide="sparkles"></i> <span data-i18n="clean_ram">Clean RAM Memory</span>
+        </button>
+
+        <!-- Timer Card -->
+        <div class="card timer-card">
+            <div class="timer-info">
+                <div class="card-title">
+                    <i data-lucide="timer" style="color: var(--accent-amber);"></i> <span data-i18n="timer_title">Game Timer</span>
+                </div>
+                <div class="timer-display" id="timerVal">00:00:00</div>
+            </div>
+            <div class="timer-controls">
+                <button class="action-btn" onclick="toggleTimer()">
+                    <i data-lucide="play" id="playIcon"></i>
+                </button>
+                <button class="action-btn danger" onclick="resetTimer()">
+                    <i data-lucide="rotate-ccw"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Notes Card -->
+        <div class="card notes-card">
+            <div class="card-title">
+                <i data-lucide="file-text" style="color: var(--accent-pink);"></i> <span data-i18n="notes_title">Quick Notes</span>
+            </div>
+            <textarea id="notesArea" placeholder="Type quick game notes, coords, strategies..." oninput="saveNotes()"></textarea>
+        </div>
+
+    </div>
+
+    <!-- Mini Overlay View -->
+    <div class="mini-view">
+        <div class="mini-stats">
+            <div class="mini-badge" style="color: var(--accent-cyan);">
+                <i data-lucide="zap" size="16"></i> <span id="miniFpsVal">--</span>
+            </div>
+            <div class="mini-badge" style="color: var(--accent-purple);">
+                <i data-lucide="cpu" size="16"></i> <span id="miniRamVal">--%</span>
+            </div>
+            <div class="mini-badge" style="color: var(--accent-amber);">
+                <i data-lucide="timer" size="16"></i> <span id="miniTimerVal">00:00:00</span>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 8px;">
+            <button class="action-btn" style="flex: 1; padding: 6px; font-size: 11px;" onclick="cleanRam()">
+                <i data-lucide="sparkles" size="14"></i> Clean
+            </button>
+            <button class="action-btn" style="flex: 1; padding: 6px; font-size: 11px; background: rgba(255,255,255,0.1);" onclick="toggleCompactMode()">
+                <i data-lucide="expand" size="14"></i> Expand
+            </button>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        const dict = {
+            UA: {
+                fps_label: "⚡ FPS Дисплея",
+                ram_label: "💾 Використання RAM",
+                clean_ram: "🧹 Очистити RAM Пам'ять",
+                timer_title: "⏱️ Ігровий Таймер",
+                notes_title: "📝 Швидкі Нотатки"
+            },
+            EN: {
+                fps_label: "⚡ Display FPS",
+                ram_label: "💾 RAM Usage",
+                clean_ram: "🧹 Clean RAM Memory",
+                timer_title: "⏱️ Game Timer",
+                notes_title: "📝 Quick Notes"
+            },
+            RU: {
+                fps_label: "⚡ FPS Дисплея",
+                ram_label: "💾 Использование RAM",
+                clean_ram: "🧹 Очистить Память RAM",
+                timer_title: "⏱️ Игровой Таймер",
+                notes_title: "📝 Быстрые Заметки"
+            }
+        };
+
+        let currentLang = "UA";
+        let isTimerRunning = false;
+        let timerSeconds = 0;
+        let isCompact = false;
+
+        function changeLang(lang) {
+            currentLang = lang;
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (dict[lang][key]) {
+                    el.innerText = dict[lang][key];
+                }
+            });
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle('light-theme');
+        }
+
+        function toggleCompactMode() {
+            isCompact = !isCompact;
+            document.body.classList.toggle('compact-mode', isCompact);
+            pywebview.api.resize_window(isCompact);
+        }
+
+        function cleanRam() {
+            pywebview.api.clean_ram();
+        }
+
+        function toggleTimer() {
+            isTimerRunning = !isTimerRunning;
+            const playIcon = document.getElementById('playIcon');
+            playIcon.setAttribute('data-lucide', isTimerRunning ? 'pause' : 'play');
+            lucide.createIcons();
+        }
+
+        function resetTimer() {
+            isTimerRunning = false;
+            timerSeconds = 0;
+            updateTimerDisplay();
+            const playIcon = document.getElementById('playIcon');
+            playIcon.setAttribute('data-lucide', 'play');
+            lucide.createIcons();
+        }
+
+        function updateTimerDisplay() {
+            const h = String(Math.floor(timerSeconds / 3600)).padStart(2, '0');
+            const m = String(Math.floor((timerSeconds % 3600) / 60)).padStart(2, '0');
+            const s = String(timerSeconds % 60).padStart(2, '0');
+            const str = `${h}:${m}:${s}`;
+            document.getElementById('timerVal').innerText = str;
+            document.getElementById('miniTimerVal').innerText = str;
+        }
+
+        setInterval(() => {
+            if (isTimerRunning) {
+                timerSeconds++;
+                updateTimerDisplay();
+            }
+        }, 1000);
+
+        function updateStats(fps, ram) {
+            document.getElementById('fpsVal').innerText = fps;
+            document.getElementById('miniFpsVal').innerText = fps;
+
+            document.getElementById('ramVal').innerText = ram + '%';
+            document.getElementById('miniRamVal').innerText = ram + '%';
+            document.getElementById('ramBar').style.width = ram + '%';
+        }
+
+        function saveNotes() {
+            const txt = document.getElementById('notesArea').value;
+            pywebview.api.save_notes(txt);
+        }
+
+        // Init notes from python
+        window.addEventListener('pywebviewready', () => {
+            pywebview.api.load_notes().then(notes => {
+                if (notes) document.getElementById('notesArea').value = notes;
+            });
+        });
+    </script>
+</body>
+</html>
+"""
+
+class Api:
+    def __init__(self, app_instance):
+        self.app = app_instance
+
+    def clean_ram(self):
+        self.app.clean_ram()
+
+    def resize_window(self, compact):
+        if compact:
+            self.app.window.resize(260, 110)
+        else:
+            self.app.window.resize(440, 620)
+
+    def save_notes(self, text):
+        try:
+            with open("game_notes.txt", "w", encoding="utf-8") as f:
+                f.write(text)
+        except Exception:
+            pass
+
+    def load_notes(self):
+        if os.path.exists("game_notes.txt"):
+            try:
+                with open("game_notes.txt", "r", encoding="utf-8") as f:
+                    return f.read()
+            except Exception:
+                pass
+        return ""
+
+    def close_app(self):
+        self.app.running = False
+        self.app.window.destroy()
+
+class GameAssistantApp:
     def __init__(self):
-        super().__init__()
-
-        self.title("🎮 Game Assistant")
-        self.normal_geometry = "460x650"
-        self.compact_geometry = "250x190"
-        
-        self.geometry(self.normal_geometry)
-        self.resizable(False, False)
-        
-        # Settings state
-        self.current_lang = "UA"
-        self.current_theme = "Dark"
-        
-        self.is_compact = False
-        self.timer_running = False
-        self.timer_seconds = 0
-        
         self.fps_value = 0
         self.fps_lock = threading.Lock()
         self.running = True
 
-        self.setup_ui()
-        
-        # Always on top setup by default
-        self.attributes("-topmost", True)
+        self.api = Api(self)
+        self.window = webview.create_window(
+            title="Game Assistant",
+            html=HTML_UI,
+            js_api=self.api,
+            width=440,
+            height=620,
+            resizable=False,
+            frameless=True,
+            on_top=True
+        )
 
-        # Start DWM System FPS Monitor Thread
-        self.monitor_thread = threading.Thread(target=self._measure_dwm_fps, daemon=True)
-        self.monitor_thread.start()
-
-        self.update_stats()
-        self.update_timer()
+        threading.Thread(target=self._measure_dwm_fps, daemon=True).start()
+        threading.Thread(target=self._push_stats_loop, daemon=True).start()
 
     def _measure_dwm_fps(self):
-        """ Native Windows DWM VSync & Frame Rate Monitor """
         dwmapi = ctypes.windll.dwmapi
         timing = DWM_TIMING_INFO()
         timing.cbSize = ctypes.sizeof(DWM_TIMING_INFO)
@@ -159,276 +668,17 @@ class GameAssistantApp(ctk.CTk):
                 pass
             time.sleep(0.1)
 
-    def setup_ui(self):
-        # 1. Main / Normal View Container
-        self.normal_view = ctk.CTkFrame(self, fg_color="transparent")
-        self.normal_view.pack(fill="both", expand=True)
-
-        # Header
-        self.header_frame = ctk.CTkFrame(self.normal_view, corner_radius=10)
-        self.header_frame.pack(fill="x", padx=15, pady=(10, 5))
-
-        self.title_label = ctk.CTkLabel(
-            self.header_frame, 
-            text=TRANSLATIONS[self.current_lang]["title"], 
-            font=ctk.CTkFont(size=20, weight="bold")
-        )
-        self.title_label.pack(pady=6)
-
-        # Controls & Settings Row 1 (Topmost & Mini Mode)
-        self.ctrl_row1 = ctk.CTkFrame(self.header_frame, fg_color="transparent")
-        self.ctrl_row1.pack(pady=2)
-
-        self.topmost_var = ctk.BooleanVar(value=True)
-        self.topmost_switch = ctk.CTkSwitch(
-            self.ctrl_row1, 
-            text=TRANSLATIONS[self.current_lang]["topmost"], 
-            variable=self.topmost_var, 
-            command=self.toggle_topmost
-        )
-        self.topmost_switch.pack(side="left", padx=10)
-
-        self.compact_btn = ctk.CTkButton(
-            self.ctrl_row1,
-            text=TRANSLATIONS[self.current_lang]["mini_mode"],
-            width=100,
-            fg_color="#3a7ebf",
-            command=self.enable_compact_mode
-        )
-        self.compact_btn.pack(side="left", padx=5)
-
-        # Controls & Settings Row 2 (Language & Theme selectors)
-        self.ctrl_row2 = ctk.CTkFrame(self.header_frame, fg_color="transparent")
-        self.ctrl_row2.pack(pady=(2, 6))
-
-        self.lang_menu = ctk.CTkOptionMenu(
-            self.ctrl_row2,
-            values=["UA", "EN", "RU"],
-            width=70,
-            command=self.change_language
-        )
-        self.lang_menu.set(self.current_lang)
-        self.lang_menu.pack(side="left", padx=5)
-
-        self.theme_menu = ctk.CTkOptionMenu(
-            self.ctrl_row2,
-            values=["Dark", "Light", "System"],
-            width=85,
-            command=self.change_theme
-        )
-        self.theme_menu.set(self.current_theme)
-        self.theme_menu.pack(side="left", padx=5)
-
-        # Dashboard / Stats Frame
-        self.stats_frame = ctk.CTkFrame(self.normal_view, corner_radius=10)
-        self.stats_frame.pack(fill="x", padx=15, pady=5)
-
-        self.fps_label = ctk.CTkLabel(
-            self.stats_frame, 
-            text=f"{TRANSLATIONS[self.current_lang]['fps_label']}: --", 
-            font=ctk.CTkFont(size=16, weight="bold"),
-            text_color="#00FFCC"
-        )
-        self.fps_label.pack(pady=4)
-
-        self.ram_label = ctk.CTkLabel(
-            self.stats_frame, 
-            text=f"{TRANSLATIONS[self.current_lang]['ram_label']}: --%", 
-            font=ctk.CTkFont(size=14)
-        )
-        self.ram_label.pack(pady=2)
-
-        self.ram_bar = ctk.CTkProgressBar(self.stats_frame, width=380)
-        self.ram_bar.pack(pady=5)
-        self.ram_bar.set(0)
-
-        self.clean_ram_btn = ctk.CTkButton(
-            self.stats_frame, 
-            text=TRANSLATIONS[self.current_lang]["clean_ram"], 
-            command=self.clean_ram,
-            fg_color="#1f538d",
-            hover_color="#14375e"
-        )
-        self.clean_ram_btn.pack(pady=8)
-
-        # Timer Frame
-        self.timer_frame = ctk.CTkFrame(self.normal_view, corner_radius=10)
-        self.timer_frame.pack(fill="x", padx=15, pady=5)
-
-        self.timer_title = ctk.CTkLabel(
-            self.timer_frame, 
-            text=TRANSLATIONS[self.current_lang]["timer_title"], 
-            font=ctk.CTkFont(size=15, weight="bold")
-        )
-        self.timer_title.pack(pady=3)
-
-        self.timer_display = ctk.CTkLabel(
-            self.timer_frame, 
-            text="00:00:00", 
-            font=ctk.CTkFont(size=22, weight="bold"),
-            text_color="#FFCC00"
-        )
-        self.timer_display.pack(pady=3)
-
-        self.timer_btn_frame = ctk.CTkFrame(self.timer_frame, fg_color="transparent")
-        self.timer_btn_frame.pack(pady=6)
-
-        self.start_timer_btn = ctk.CTkButton(
-            self.timer_btn_frame, 
-            text=TRANSLATIONS[self.current_lang]["start_pause"], 
-            width=110, 
-            command=self.toggle_timer
-        )
-        self.start_timer_btn.pack(side="left", padx=5)
-
-        self.reset_timer_btn = ctk.CTkButton(
-            self.timer_btn_frame, 
-            text=TRANSLATIONS[self.current_lang]["reset"], 
-            width=90, 
-            fg_color="#a83232",
-            hover_color="#7a2323",
-            command=self.reset_timer
-        )
-        self.reset_timer_btn.pack(side="left", padx=5)
-
-        # Quick Notes Frame
-        self.notes_frame = ctk.CTkFrame(self.normal_view, corner_radius=10)
-        self.notes_frame.pack(fill="both", expand=True, padx=15, pady=(5, 10))
-
-        self.notes_title = ctk.CTkLabel(
-            self.notes_frame, 
-            text=TRANSLATIONS[self.current_lang]["notes_title"], 
-            font=ctk.CTkFont(size=15, weight="bold")
-        )
-        self.notes_title.pack(pady=4)
-
-        self.notes_textbox = ctk.CTkTextbox(self.notes_frame, wrap="word")
-        self.notes_textbox.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-
-        # 2. Compact / Overlay Mini View Container
-        self.compact_view = ctk.CTkFrame(self, fg_color="transparent")
-
-        self.mini_title = ctk.CTkLabel(
-            self.compact_view,
-            text="🎮 Game Mini Overlay",
-            font=ctk.CTkFont(size=13, weight="bold")
-        )
-        self.mini_title.pack(pady=(5, 2))
-
-        self.mini_fps_label = ctk.CTkLabel(
-            self.compact_view,
-            text="⚡ FPS: --",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color="#00FFCC"
-        )
-        self.mini_fps_label.pack(pady=1)
-
-        self.mini_ram_label = ctk.CTkLabel(
-            self.compact_view,
-            text="💾 RAM: --%",
-            font=ctk.CTkFont(size=12)
-        )
-        self.mini_ram_label.pack(pady=1)
-
-        self.mini_timer_label = ctk.CTkLabel(
-            self.compact_view,
-            text="⏱️ 00:00:00",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color="#FFCC00"
-        )
-        self.mini_timer_label.pack(pady=2)
-
-        self.mini_btn_frame = ctk.CTkFrame(self.compact_view, fg_color="transparent")
-        self.mini_btn_frame.pack(pady=4)
-
-        self.mini_clean_btn = ctk.CTkButton(
-            self.mini_btn_frame,
-            text=TRANSLATIONS[self.current_lang]["clean"],
-            width=80,
-            height=24,
-            font=ctk.CTkFont(size=11),
-            command=self.clean_ram
-        )
-        self.mini_clean_btn.pack(side="left", padx=3)
-
-        self.expand_btn = ctk.CTkButton(
-            self.mini_btn_frame,
-            text=TRANSLATIONS[self.current_lang]["full_mode"],
-            width=70,
-            height=24,
-            font=ctk.CTkFont(size=11),
-            fg_color="#2b7bba",
-            command=self.disable_compact_mode
-        )
-        self.expand_btn.pack(side="left", padx=3)
-
-        # Load notes content
-        self.notes_file = "game_notes.txt"
-        if os.path.exists(self.notes_file):
+    def _push_stats_loop(self):
+        time.sleep(1.0)
+        while self.running:
             try:
-                with open(self.notes_file, "r", encoding="utf-8") as f:
-                    self.notes_textbox.insert("1.0", f.read())
+                with self.fps_lock:
+                    fps = self.fps_value
+                ram = psutil.virtual_memory().percent
+                self.window.evaluate_js(f"updateStats({fps}, {ram});")
             except Exception:
                 pass
-        self.notes_textbox.bind("<KeyRelease>", self.save_notes)
-
-    def change_language(self, new_lang):
-        self.current_lang = new_lang
-        t = TRANSLATIONS[new_lang]
-        
-        self.title_label.configure(text=t["title"])
-        self.topmost_switch.configure(text=t["topmost"])
-        self.compact_btn.configure(text=t["mini_mode"])
-        
-        self.clean_ram_btn.configure(text=t["clean_ram"])
-        self.timer_title.configure(text=t["timer_title"])
-        self.start_timer_btn.configure(text=t["start_pause"])
-        self.reset_timer_btn.configure(text=t["reset"])
-        self.notes_title.configure(text=t["notes_title"])
-        
-        self.mini_clean_btn.configure(text=t["clean"])
-        self.expand_btn.configure(text=t["full_mode"])
-        
-        self.update_stats()
-
-    def change_theme(self, new_theme):
-        self.current_theme = new_theme
-        ctk.set_appearance_mode(new_theme)
-
-    def enable_compact_mode(self):
-        self.is_compact = True
-        self.normal_view.pack_forget()
-        self.compact_view.pack(fill="both", expand=True)
-        self.geometry(self.compact_geometry)
-        self.attributes("-topmost", True)
-        self.topmost_var.set(True)
-
-    def disable_compact_mode(self):
-        self.is_compact = False
-        self.compact_view.pack_forget()
-        self.normal_view.pack(fill="both", expand=True)
-        self.geometry(self.normal_geometry)
-        self.attributes("-topmost", self.topmost_var.get())
-
-    def toggle_topmost(self):
-        if not self.is_compact:
-            self.attributes("-topmost", self.topmost_var.get())
-
-    def update_stats(self):
-        with self.fps_lock:
-            current_fps = self.fps_value
-
-        t = TRANSLATIONS[self.current_lang]
-        fps_text = f"{t['fps_label']}: {current_fps}"
-        self.fps_label.configure(text=fps_text)
-        self.mini_fps_label.configure(text=f"⚡ FPS: {current_fps}")
-
-        ram_perm = psutil.virtual_memory().percent
-        self.ram_label.configure(text=f"{t['ram_label']}: {ram_perm}%")
-        self.ram_bar.set(ram_perm / 100.0)
-        self.mini_ram_label.configure(text=f"💾 RAM: {ram_perm}%")
-
-        self.after(200, self.update_stats)
+            time.sleep(0.25)
 
     def clean_ram(self):
         try:
@@ -446,38 +696,9 @@ class GameAssistantApp(ctk.CTk):
         except Exception as e:
             print("RAM Clean Error:", e)
 
-    def toggle_timer(self):
-        self.timer_running = not self.timer_running
-
-    def reset_timer(self):
-        self.timer_running = False
-        self.timer_seconds = 0
-        self.timer_display.configure(text="00:00:00")
-        self.mini_timer_label.configure(text="⏱️ 00:00:00")
-
-    def update_timer(self):
-        if self.timer_running:
-            self.timer_seconds += 1
-            hours, remainder = divmod(self.timer_seconds, 3600)
-            minutes, seconds = divmod(remainder, 60)
-            time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-            self.timer_display.configure(text=time_str)
-            self.mini_timer_label.configure(text=f"⏱️ {time_str}")
-        self.after(1000, self.update_timer)
-
-    def save_notes(self, event=None):
-        try:
-            content = self.notes_textbox.get("1.0", "end-1c")
-            with open(self.notes_file, "w", encoding="utf-8") as f:
-                f.write(content)
-        except Exception:
-            pass
-
-    def on_closing(self):
-        self.running = False
-        self.destroy()
+    def run(self):
+        webview.start()
 
 if __name__ == "__main__":
     app = GameAssistantApp()
-    app.protocol("WM_DELETE_WINDOW", app.on_closing)
-    app.mainloop()
+    app.run()
