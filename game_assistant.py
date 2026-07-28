@@ -11,24 +11,28 @@ import customtkinter as ctk
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
+# Define C types for DWM
+c_ulonglong = ctypes.c_ulonglong
+c_uint32 = ctypes.c_uint32
+
 class DWM_TIMING_INFO(ctypes.Structure):
     _fields_ = [
-        ("cbSize", wintypes.UINT),
-        ("rateRefresh", wintypes.UINT64 * 2),
-        ("qpcRefreshPeriod", wintypes.UINT64),
-        ("rateCompose", wintypes.UINT64 * 2),
-        ("qpcVBlank", wintypes.UINT64),
-        ("cRefresh", wintypes.UINT64),
-        ("cDXActive", wintypes.UINT),
-        ("cDXVideoCreated", wintypes.UINT),
-        ("cCommandSignaled", wintypes.UINT),
-        ("qpcCommandFrameStart", wintypes.UINT64),
-        ("cFramesReceived", wintypes.UINT64),
-        ("cCursorsSkipped", wintypes.UINT),
-        ("cFramesShown", wintypes.UINT),
-        ("cPresentRefresh", wintypes.UINT64),
-        ("cActiveRefreshes", wintypes.UINT64),
-        ("cBuffersEmpty", wintypes.UINT64)
+        ("cbSize", c_uint32),
+        ("rateRefresh", c_ulonglong * 2),
+        ("qpcRefreshPeriod", c_ulonglong),
+        ("rateCompose", c_ulonglong * 2),
+        ("qpcVBlank", c_ulonglong),
+        ("cRefresh", c_ulonglong),
+        ("cDXActive", c_uint32),
+        ("cDXVideoCreated", c_uint32),
+        ("cCommandSignaled", c_uint32),
+        ("qpcCommandFrameStart", c_ulonglong),
+        ("cFramesReceived", c_ulonglong),
+        ("cCursorsSkipped", c_uint32),
+        ("cFramesShown", c_uint32),
+        ("cPresentRefresh", c_ulonglong),
+        ("cActiveRefreshes", c_ulonglong),
+        ("cBuffersEmpty", c_ulonglong)
     ]
 
 # Translations dictionary
@@ -37,7 +41,7 @@ TRANSLATIONS = {
         "title": "🎮 Game Assistant",
         "topmost": "Поверх всіх вікон",
         "mini_mode": "🔍 Міні-режим",
-        "fps_label": "⚡ FPS Екрана / Дисплея",
+        "fps_label": "⚡ System FPS",
         "ram_label": "💾 RAM Використання",
         "clean_ram": "🧹 Очистити RAM",
         "timer_title": "⏱️ Ігровий Таймер",
@@ -53,7 +57,7 @@ TRANSLATIONS = {
         "title": "🎮 Game Assistant",
         "topmost": "Always on Top",
         "mini_mode": "🔍 Mini Mode",
-        "fps_label": "⚡ Display FPS",
+        "fps_label": "⚡ System FPS",
         "ram_label": "💾 RAM Usage",
         "clean_ram": "🧹 Clean RAM",
         "timer_title": "⏱️ Game Timer",
@@ -69,7 +73,7 @@ TRANSLATIONS = {
         "title": "🎮 Game Assistant",
         "topmost": "Поверх всех окон",
         "mini_mode": "🔍 Мини-режим",
-        "fps_label": "⚡ FPS Экрана / Дисплея",
+        "fps_label": "⚡ System FPS",
         "ram_label": "💾 Использование RAM",
         "clean_ram": "🧹 Очистить RAM",
         "timer_title": "⏱️ Игровой Таймер",
